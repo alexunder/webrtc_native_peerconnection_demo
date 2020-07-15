@@ -3,7 +3,8 @@ project(webrtc-native)
 
 set(CMAKE_CXX_STANDARD 14)
 
-set(CMAKE_C_FLAGS "-pthread")
+set(CMAKE_C_COMPILER   "/usr/bin/clang++")
+set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 
 include_directories("${LIBWEBRTC_PATH}/include")
 include_directories("${LIBWEBRTC_PATH}/include/third_party/abseil-cpp")
@@ -25,6 +26,8 @@ add_definitions(${GTK3_CFLAGS_OTHER})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBRTC_LINUX=1 -DWEBRTC_POSIX=1")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W -Wall -Wno-unused-parameter")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -pthread")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lstdc++")
 
 set(SRC
     client/linux/main.cc

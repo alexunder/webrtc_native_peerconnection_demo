@@ -7,8 +7,7 @@ echo ${ROOT_PATH}
 
 readonly LOCAL_ENV_PATH=${ROOT_PATH}/local
 
-export CC=cc
-export CXX=c++
+export CXX=g++
 
 readonly BUILD_PATH=${ROOT_PATH}/build
 mkdir -p ${BUILD_PATH}
