@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "client/linux/main_wnd.h"
+#include "main_wnd.h"
 
 #include <cairo.h>
 #include <gdk/gdk.h>
@@ -32,7 +32,7 @@
 #include "api/video/video_source_interface.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
-#include "libyuv/convert_from.h"
+#include "libyuv/include/libyuv/convert_from.h"
 
 namespace {
 

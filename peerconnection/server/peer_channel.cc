@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "server/peer_channel.h"
+#include "peer_channel.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -16,8 +16,8 @@
 
 #include <algorithm>
 
-#include "server/data_socket.h"
-#include "server/utils.h"
+#include "data_socket.h"
+#include "utils.h"
 
 // Set to the peer id of the originator when messages are being
 // exchanged between peers, but set to the id of the receiving peer

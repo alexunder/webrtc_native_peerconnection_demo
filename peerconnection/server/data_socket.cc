@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "server/data_socket.h"
+#include "data_socket.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -19,7 +19,7 @@
 #include <unistd.h>
 #endif
 
-#include "server/utils.h"
+#include "utils.h"
 
 static const char kHeaderTerminator[] = "\r\n\r\n";
 static const int kHeaderTerminatorLength = sizeof(kHeaderTerminator) - 1;

@@ -22,10 +22,10 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
-#include "server/data_socket.h"
-#include "server/peer_channel.h"
+#include "data_socket.h"
+#include "peer_channel.h"
 #include "system_wrappers/include/field_trial.h"
-//#include "test/field_trial.h"
+#include "test/field_trial.h"
 
 ABSL_FLAG(
     std::string,

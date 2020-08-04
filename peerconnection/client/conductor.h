@@ -19,8 +19,8 @@
 
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
-#include "client/main_wnd.h"
-#include "client/peer_connection_client.h"
+#include "main_wnd.h"
+#include "peer_connection_client.h"
 
 namespace webrtc {
 class VideoCaptureModule;

@@ -8,9 +8,9 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "client/peer_connection_client.h"
+#include "peer_connection_client.h"
 
-#include "client/defaults.h"
+#include "defaults.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/net_helpers.h"
