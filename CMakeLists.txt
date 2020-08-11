@@ -8,10 +8,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 #message(STATUS "CMAKE_CURRENT_SOURCE_DIR: " ${CMAKE_CURRENT_SOURCE_DIR})
 
-#include_directories("${LIBWEBRTC_PATH}/include")
-#include_directories("${LIBWEBRTC_PATH}/modules/abseil-cpp")
-#include_directories("${LIBWEBRTC_PATH}/include/third_party/libyuv")
-#include_directories("${LIBWEBRTC_PATH}/include/third_party")
 include_directories("webrtc/include")
 include_directories("third_party")
 include_directories("third_party/libyuv/include")
@@ -70,9 +66,11 @@ set(SRC
     peerconnection/client/peer_connection_client.cc
     peerconnection/client/conductor.cc
     peerconnection/client/defaults.cc
+    peerconnection/client/custom_video_source.cc
     )
 
 SET(OBJS
+    ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/api/create_frame_generator/create_frame_generator.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/test/field_trial/field_trial.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/test/platform_video_capturer/platform_video_capturer.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/test/platform_video_capturer/vcm_capturer.o
@@ -84,6 +82,7 @@ SET(OBJS
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/test/video_test_common/frame_forwarder.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/test/video_test_common/frame_generator_capturer.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/test/video_test_common/test_video_capturer.o
+    ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/test/frame_generator_impl/frame_generator.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/flags/flag/flag.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/flags/parse/parse.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/strings/strings/ascii.o
@@ -196,9 +195,6 @@ SET_SOURCE_FILES_PROPERTIES(
 )
 
 add_executable(webrtc_client ${OBJS} ${SRC})
-
-
-#target_link_libraries(webrtc_client, )
 
 target_link_libraries(webrtc_client
 -Wl,--start-group

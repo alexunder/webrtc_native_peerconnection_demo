@@ -74,7 +74,22 @@ int main(int argc, char* argv[]) {
   g_thread_init(NULL);
 #endif
 
-  absl::ParseCommandLine(argc, argv);
+  bool isCustomVideoMode = false;
+  std::vector<char*> args = absl::ParseCommandLine(argc, argv);
+
+  if (argc > 2) {
+    printf("Error: Too many argvs.\n");
+    return -1;
+  } else if (argc == 2) {
+    printf("Args 1:%s\n", args[1]);
+    if (strcmp(args[1], "c") == 0) {
+      printf("We will generate some rectangles.\n");
+      isCustomVideoMode = true;
+    } else {
+      printf("Wrong parameters.\n");
+      return -1;
+    }
+  }
 
   // InitFieldTrialsFromString stores the char*, so the char array must outlive
   // the application.
@@ -103,6 +118,7 @@ int main(int argc, char* argv[]) {
   PeerConnectionClient client;
   rtc::scoped_refptr<Conductor> conductor(
       new rtc::RefCountedObject<Conductor>(&client, &wnd));
+  conductor->setCustomMode(isCustomVideoMode);
   socket_server.set_client(&client);
   socket_server.set_conductor(conductor);
 

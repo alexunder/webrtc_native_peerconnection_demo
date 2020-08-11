@@ -22,6 +22,8 @@
 #include "main_wnd.h"
 #include "peer_connection_client.h"
 
+#include "custom_video_source.h"
+
 namespace webrtc {
 class VideoCaptureModule;
 }  // namespace webrtc
@@ -48,6 +50,10 @@ class Conductor : public webrtc::PeerConnectionObserver,
   bool connection_active() const;
 
   void Close() override;
+
+  bool setCustomMode(bool mode) {
+    mIsCustomMode = mode;
+  }
 
  protected:
   ~Conductor();
@@ -129,6 +135,9 @@ class Conductor : public webrtc::PeerConnectionObserver,
   MainWindow* main_wnd_;
   std::deque<std::string*> pending_messages_;
   std::string server_;
+  bool mIsCustomMode = false;
+  //CustomVideoSource * mCustomVideoDevice;
+  rtc::scoped_refptr<CustomVideoSource> mCustomVideoDevice;
 };
 
 #endif  // EXAMPLES_PEERCONNECTION_CLIENT_CONDUCTOR_H_
