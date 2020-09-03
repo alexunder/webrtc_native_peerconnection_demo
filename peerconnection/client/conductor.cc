@@ -426,8 +426,10 @@ void Conductor::ConnectToPeer(int peer_id) {
 
   if (InitializePeerConnection()) {
     peer_id_ = peer_id;
-    peer_connection_->CreateOffer(
-        this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+    webrtc::PeerConnectionInterface::RTCOfferAnswerOptions options;
+    options.offer_to_receive_video = 0;
+    options.offer_to_receive_audio = 0;
+    peer_connection_->CreateOffer(this, options);
   } else {
     main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
   }
