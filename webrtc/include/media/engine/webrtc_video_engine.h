@@ -433,6 +433,11 @@ class WebRtcVideoChannel : public VideoMediaChannel,
     // destructed as they are used in asynchronous tasks it has to be destructed
     // first.
     rtc::AsyncInvoker invoker_;
+
+    // TODO(asapersson): investigate why setting
+    // DegrationPreferences::MAINTAIN_RESOLUTION isn't sufficient to disable
+    // downscaling everywhere in the pipeline.
+    const bool disable_automatic_resize_;
   };
 
   // Wrapper for the receiver part, contains configs etc. that are needed to
@@ -661,7 +666,7 @@ class EncoderStreamFactory
       const absl::optional<webrtc::DataRate>& experimental_min_bitrate) const;
 
   std::vector<webrtc::VideoStream>
-  CreateSimulcastOrConfereceModeScreenshareStreams(
+  CreateSimulcastOrConferenceModeScreenshareStreams(
       int width,
       int height,
       const webrtc::VideoEncoderConfig& encoder_config,

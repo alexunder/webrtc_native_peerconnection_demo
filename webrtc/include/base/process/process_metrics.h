@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "base/base_export.h"
+#include "base/cpu.h"
 #include "base/gtest_prod_util.h"
 #include "base/macros.h"
 #include "base/optional.h"
@@ -25,8 +26,9 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
 #include <mach/mach.h>
 #include "base/process/port_provider_mac.h"
 
@@ -45,7 +47,7 @@ namespace base {
 // Full declaration is in process_metrics_iocounters.h.
 struct IoCounters;
 
-#if defined(OS_LINUX) || defined(OS_ANDROID)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
 // Minor and major page fault counts since the process creation.
 // Both counts are process-wide, and exclude child processes.
 //
@@ -55,7 +57,7 @@ struct PageFaultCounts {
   int64_t minor;
   int64_t major;
 };
-#endif  // defined(OS_LINUX) || defined(OS_ANDROID)
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
 
 // Convert a POSIX timeval to microseconds.
 BASE_EXPORT int64_t TimeValToMicroseconds(const struct timeval& tv);
@@ -79,7 +81,7 @@ class BASE_EXPORT ProcessMetrics {
   ~ProcessMetrics();
 
   // Creates a ProcessMetrics for the specified process.
-#if !defined(OS_MACOSX) || defined(OS_IOS)
+#if !defined(OS_MAC)
   static std::unique_ptr<ProcessMetrics> CreateProcessMetrics(
       ProcessHandle process);
 #else
@@ -90,13 +92,13 @@ class BASE_EXPORT ProcessMetrics {
   static std::unique_ptr<ProcessMetrics> CreateProcessMetrics(
       ProcessHandle process,
       PortProvider* port_provider);
-#endif  // !defined(OS_MACOSX) || defined(OS_IOS)
+#endif  // !defined(OS_MAC)
 
   // Creates a ProcessMetrics for the current process. This a cross-platform
   // convenience wrapper for CreateProcessMetrics().
   static std::unique_ptr<ProcessMetrics> CreateCurrentProcessMetrics();
 
-#if defined(OS_LINUX) || defined(OS_ANDROID)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
   // Resident Set Size is a Linux/Android specific memory concept. Do not
   // attempt to extend this to other platforms.
   BASE_EXPORT size_t GetResidentSetSize() const;
@@ -122,7 +124,8 @@ class BASE_EXPORT ProcessMetrics {
   // will result in a time delta of 2 seconds/per 1 wall-clock second.
   TimeDelta GetCumulativeCPUUsage();
 
-#if defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_AIX)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) || \
+    defined(OS_AIX)
   // Emits the cumulative CPU usage for all currently active threads since they
   // were started into the output parameter (replacing its current contents).
   // Threads that have already terminated will not be reported. Thus, the sum of
@@ -140,20 +143,9 @@ class BASE_EXPORT ProcessMetrics {
   // combination with a non-zero CPU time value.
   // NOTE: Currently only supported on Linux/Android, and only on devices that
   // expose per-pid/tid time_in_state files in /proc.
-  enum class CoreType {
-    kUnknown = 0,
-    kOther,
-    kSymmetric,
-    kBigLittle_Little,
-    kBigLittle_Big,
-    kBigLittleBigger_Little,
-    kBigLittleBigger_Big,
-    kBigLittleBigger_Bigger,
-    kMaxValue = kBigLittleBigger_Bigger
-  };
   struct ThreadTimeInState {
     PlatformThreadId thread_id;
-    CoreType core_type;           // type of the cores in this cluster.
+    CPU::CoreType core_type;      // type of the cores in this cluster.
     uint32_t cluster_core_index;  // index of the first core in the cluster.
     uint64_t core_frequency_khz;
     TimeDelta cumulative_cpu_time;
@@ -167,13 +159,14 @@ class BASE_EXPORT ProcessMetrics {
   bool ParseProcTimeInState(const std::string& content,
                             PlatformThreadId tid,
                             TimeInStatePerThread& time_in_state_per_thread);
-#endif  // defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_AIX)
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) ||
+        // defined(OS_AIX)
 
   // Returns the number of average idle cpu wakeups per second since the last
   // call.
   int GetIdleWakeupsPerSecond();
 
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
   // Returns the number of average "package idle exits" per second, which have
   // a higher energy impact than a regular wakeup, since the last call.
   //
@@ -223,42 +216,44 @@ class BASE_EXPORT ProcessMetrics {
   int GetOpenFdSoftLimit() const;
 #endif  // defined(OS_POSIX)
 
-#if defined(OS_LINUX) || defined(OS_ANDROID)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
   // Bytes of swap as reported by /proc/[pid]/status.
   uint64_t GetVmSwapBytes() const;
 
   // Minor and major page fault count as reported by /proc/[pid]/stat.
   // Returns true for success.
   bool GetPageFaultCounts(PageFaultCounts* counts) const;
-#endif  // defined(OS_LINUX) || defined(OS_ANDROID)
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
 
   // Returns total memory usage of malloc.
   size_t GetMallocUsage();
 
  private:
-#if !defined(OS_MACOSX) || defined(OS_IOS)
+#if !defined(OS_MAC)
   explicit ProcessMetrics(ProcessHandle process);
 #else
   ProcessMetrics(ProcessHandle process, PortProvider* port_provider);
-#endif  // !defined(OS_MACOSX) || defined(OS_IOS)
+#endif  // !defined(OS_MAC)
 
-#if defined(OS_MACOSX) || defined(OS_LINUX) || defined(OS_AIX)
+#if defined(OS_APPLE) || defined(OS_LINUX) || defined(OS_CHROMEOS) || \
+    defined(OS_AIX)
   int CalculateIdleWakeupsPerSecond(uint64_t absolute_idle_wakeups);
 #endif
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
   // The subset of wakeups that cause a "package exit" can be tracked on macOS.
   // See |GetPackageIdleWakeupsForSecond| comment for more info.
   int CalculatePackageIdleWakeupsPerSecond(
       uint64_t absolute_package_idle_wakeups);
 #endif
 
-#if defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_AIX)
-  CoreType GetCoreType(int core_index);
-  void GuessCoreTypes();
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) || \
+    defined(OS_AIX)
+  CPU::CoreType GetCoreType(int core_index);
 
   // Initialized on the first call to GetCoreType().
-  base::Optional<std::vector<CoreType>> core_index_to_type_;
-#endif  // defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_AIX)
+  base::Optional<std::vector<CPU::CoreType>> core_index_to_type_;
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) ||
+        // defined(OS_AIX)
 
 #if defined(OS_WIN)
   win::ScopedHandle process_;
@@ -279,13 +274,14 @@ class BASE_EXPORT ProcessMetrics {
   // Number of bytes transferred to/from disk in bytes.
   uint64_t last_cumulative_disk_usage_ = 0;
 
-#if defined(OS_MACOSX) || defined(OS_LINUX) || defined(OS_AIX)
+#if defined(OS_APPLE) || defined(OS_LINUX) || defined(OS_CHROMEOS) || \
+    defined(OS_AIX)
   // Same thing for idle wakeups.
   TimeTicks last_idle_wakeups_time_;
   uint64_t last_absolute_idle_wakeups_;
 #endif
 
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
   // And same thing for package idle exit wakeups.
   TimeTicks last_package_idle_wakeups_time_;
   uint64_t last_absolute_package_idle_wakeups_;
@@ -295,12 +291,12 @@ class BASE_EXPORT ProcessMetrics {
 #endif
 
 #if !defined(OS_IOS)
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
   // Queries the port provider if it's set.
   mach_port_t TaskForPid(ProcessHandle process) const;
 
   PortProvider* port_provider_;
-#endif  // defined(OS_MACOSX)
+#endif  // defined(OS_APPLE)
 #endif  // !defined(OS_IOS)
 
   DISALLOW_COPY_AND_ASSIGN(ProcessMetrics);
@@ -330,8 +326,9 @@ BASE_EXPORT size_t GetHandleLimit();
 BASE_EXPORT void IncreaseFdLimitTo(unsigned int max_descriptors);
 #endif  // defined(OS_POSIX)
 
-#if defined(OS_WIN) || defined(OS_MACOSX) || defined(OS_LINUX) || \
-    defined(OS_ANDROID) || defined(OS_AIX) || defined(OS_FUCHSIA)
+#if defined(OS_WIN) || defined(OS_APPLE) || defined(OS_LINUX) ||      \
+    defined(OS_CHROMEOS) || defined(OS_ANDROID) || defined(OS_AIX) || \
+    defined(OS_FUCHSIA)
 // Data about system-wide memory consumption. Values are in KB. Available on
 // Windows, Mac, Linux, Android and Chrome OS.
 //
@@ -364,7 +361,8 @@ struct BASE_EXPORT SystemMemoryInfoKB {
   int avail_phys = 0;
 #endif
 
-#if defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_AIX)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) || \
+    defined(OS_AIX)
   // This provides an estimate of available memory as described here:
   // https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
   // NOTE: this is ONLY valid in kernels 3.14 and up.  Its value will always
@@ -373,13 +371,13 @@ struct BASE_EXPORT SystemMemoryInfoKB {
   int available = 0;
 #endif
 
-#if !defined(OS_MACOSX)
+#if !defined(OS_APPLE)
   int swap_total = 0;
   int swap_free = 0;
 #endif
 
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_AIX) || \
-    defined(OS_FUCHSIA)
+#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS) || \
+    defined(OS_AIX) || defined(OS_FUCHSIA)
   int buffers = 0;
   int cached = 0;
   int active_anon = 0;
@@ -388,22 +386,22 @@ struct BASE_EXPORT SystemMemoryInfoKB {
   int inactive_file = 0;
   int dirty = 0;
   int reclaimable = 0;
-#endif  // defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_AIX) ||
-        // defined(OS_FUCHSIA)
+#endif  // defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS) ||
+        // defined(OS_AIX) defined(OS_FUCHSIA)
 
-#if defined(OS_CHROMEOS)
+#if defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
   int shmem = 0;
   int slab = 0;
   // Gem data will be -1 if not supported.
   int gem_objects = -1;
   long long gem_size = -1;
-#endif  // defined(OS_CHROMEOS)
+#endif  // defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
 
-#if defined(OS_MACOSX)
+#if defined(OS_APPLE)
   int speculative = 0;
   int file_backed = 0;
   int purgeable = 0;
-#endif  // defined(OS_MACOSX)
+#endif  // defined(OS_APPLE)
 };
 
 // On Linux/Android/Chrome OS, system-wide memory consumption data is parsed
@@ -414,10 +412,12 @@ struct BASE_EXPORT SystemMemoryInfoKB {
 // Exposed for memory debugging widget.
 BASE_EXPORT bool GetSystemMemoryInfo(SystemMemoryInfoKB* meminfo);
 
-#endif  // defined(OS_WIN) || defined(OS_MACOSX) || defined(OS_LINUX) ||
-        // defined(OS_ANDROID) || defined(OS_AIX) || defined(OS_FUCHSIA)
+#endif  // defined(OS_WIN) || defined(OS_APPLE) || defined(OS_LINUX) ||
+        // defined(OS_CHROMEOS) defined(OS_ANDROID) || defined(OS_AIX) ||
+        // defined(OS_FUCHSIA)
 
-#if defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_AIX)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) || \
+    defined(OS_AIX)
 // Parse the data found in /proc/<pid>/stat and return the sum of the
 // CPU-related ticks.  Returns -1 on parse error.
 // Exposed for testing.
@@ -446,6 +446,7 @@ struct BASE_EXPORT VmStatInfo {
   unsigned long pswpin = 0;
   unsigned long pswpout = 0;
   unsigned long pgmajfault = 0;
+  unsigned long oom_kill = 0;
 };
 
 // Retrieves data from /proc/vmstat about system-wide vm operations.
@@ -490,9 +491,10 @@ BASE_EXPORT bool GetSystemDiskInfo(SystemDiskInfo* diskinfo);
 // Returns the amount of time spent in user space since boot across all CPUs.
 BASE_EXPORT TimeDelta GetUserCpuTimeSinceBoot();
 
-#endif  // defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_AIX)
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) ||
+        // defined(OS_AIX)
 
-#if defined(OS_CHROMEOS)
+#if defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
 // Data from files in directory /sys/block/zram0 about ZRAM usage.
 struct BASE_EXPORT SwapInfo {
   SwapInfo()
@@ -529,7 +531,7 @@ BASE_EXPORT bool ParseZramStat(StringPiece stat_data, SwapInfo* swap_info);
 // Fills in the provided |swap_data| structure.
 // Returns true on success or false for a parsing error.
 BASE_EXPORT bool GetSwapInfo(SwapInfo* swap_info);
-#endif  // defined(OS_CHROMEOS)
+#endif  // defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
 
 struct BASE_EXPORT SystemPerformanceInfo {
   SystemPerformanceInfo();
@@ -585,12 +587,12 @@ class BASE_EXPORT SystemMetrics {
   FRIEND_TEST_ALL_PREFIXES(SystemMetricsTest, SystemMetrics);
 
   size_t committed_memory_;
-#if defined(OS_LINUX) || defined(OS_ANDROID)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
   SystemMemoryInfoKB memory_info_;
   VmStatInfo vmstat_info_;
   SystemDiskInfo disk_info_;
 #endif
-#if defined(OS_CHROMEOS)
+#if defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
   SwapInfo swap_info_;
 #endif
 #if defined(OS_WIN)
@@ -598,7 +600,7 @@ class BASE_EXPORT SystemMetrics {
 #endif
 };
 
-#if defined(OS_MACOSX) && !defined(OS_IOS)
+#if defined(OS_MAC)
 enum class MachVMRegionResult {
   // There were no more memory regions between |address| and the end of the
   // virtual address space.
@@ -632,7 +634,7 @@ BASE_EXPORT MachVMRegionResult GetBasicInfo(mach_port_t task,
                                             mach_vm_size_t* size,
                                             mach_vm_address_t* address,
                                             vm_region_basic_info_64* info);
-#endif  // defined(OS_MACOSX) && !defined(OS_IOS)
+#endif  // defined(OS_MAC)
 
 }  // namespace base
 

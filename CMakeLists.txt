@@ -108,7 +108,7 @@ SET(OBJS
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/base/base/sysinfo.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/base/base/thread_identity.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/base/base/unscaledcycleclock.o
-    ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/base/dynamic_annotations/dynamic_annotations.o
+    #${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/base/dynamic_annotations/dynamic_annotations.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/base/spinlock_wait/spinlock_wait.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/base/throw_delegate/throw_delegate.o
     ${CMAKE_CURRENT_SOURCE_DIR}/webrtc/obj/third_party/abseil-cpp/absl/numeric/int128/int128.o

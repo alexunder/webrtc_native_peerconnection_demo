@@ -18,9 +18,9 @@
 #include "base/task/common/checked_lock.h"
 #include "base/task/post_job.h"
 #include "base/task/task_traits.h"
-#include "base/task/thread_pool/sequence_sort_key.h"
 #include "base/task/thread_pool/task.h"
 #include "base/task/thread_pool/task_source.h"
+#include "base/task/thread_pool/task_source_sort_key.h"
 
 namespace base {
 namespace internal {
@@ -35,7 +35,7 @@ class BASE_EXPORT JobTaskSource : public TaskSource {
   JobTaskSource(const Location& from_here,
                 const TaskTraits& traits,
                 RepeatingCallback<void(JobDelegate*)> worker_task,
-                RepeatingCallback<size_t()> max_concurrency_callback,
+                MaxConcurrencyCallback max_concurrency_callback,
                 PooledTaskRunnerDelegate* delegate);
 
   static JobHandle CreateJobHandle(
@@ -68,6 +68,10 @@ class BASE_EXPORT JobTaskSource : public TaskSource {
   // TaskSource:
   ExecutionEnvironment GetExecutionEnvironment() override;
   size_t GetRemainingConcurrency() const override;
+  TaskSourceSortKey GetSortKey() const override;
+
+  bool IsCompleted() const;
+  size_t GetWorkerCount() const;
 
   // Returns the maximum number of tasks from this TaskSource that can run
   // concurrently.
@@ -81,13 +85,6 @@ class BASE_EXPORT JobTaskSource : public TaskSource {
   bool ShouldYield();
 
   PooledTaskRunnerDelegate* delegate() const { return delegate_; }
-
-#if DCHECK_IS_ON()
-  size_t GetConcurrencyIncreaseVersion() const;
-  // Returns true if the concurrency version was updated above
-  // |recorded_version|, or false on timeout.
-  bool WaitForConcurrencyIncreaseUpdate(size_t recorded_version);
-#endif  // DCHECK_IS_ON()
 
  private:
   // Atomic internal state to track the number of workers running a task from
@@ -179,12 +176,13 @@ class BASE_EXPORT JobTaskSource : public TaskSource {
   // either there's no work remaining or Job was cancelled.
   bool WaitForParticipationOpportunity() EXCLUSIVE_LOCKS_REQUIRED(worker_lock_);
 
+  size_t GetMaxConcurrency(size_t worker_count) const;
+
   // TaskSource:
   RunStatus WillRunTask() override;
   Task TakeTask(TaskSource::Transaction* transaction) override;
   Task Clear(TaskSource::Transaction* transaction) override;
   bool DidProcessTask(TaskSource::Transaction* transaction) override;
-  SequenceSortKey GetSortKey() const override;
 
   // Synchronizes access to workers state.
   mutable CheckedLock worker_lock_{UniversalSuccessor()};
@@ -202,22 +200,15 @@ class BASE_EXPORT JobTaskSource : public TaskSource {
   std::atomic<uint32_t> assigned_task_ids_{0};
 
   const Location from_here_;
-  RepeatingCallback<size_t()> max_concurrency_callback_;
+  RepeatingCallback<size_t(size_t)> max_concurrency_callback_;
 
   // Worker task set by the job owner.
   RepeatingCallback<void(JobDelegate*)> worker_task_;
   // Task returned from TakeTask(), that calls |worker_task_| internally.
   RepeatingClosure primary_task_;
 
-  const TimeTicks queue_time_;
+  const TimeTicks ready_time_;
   PooledTaskRunnerDelegate* delegate_;
-
-#if DCHECK_IS_ON()
-  // Signaled whenever |increase_version_| is updated.
-  std::unique_ptr<ConditionVariable> version_condition_for_dcheck_;
-  // Incremented every time max concurrency is increased.
-  size_t increase_version_ GUARDED_BY(worker_lock_) = 0;
-#endif  // DCHECK_IS_ON()
 
   DISALLOW_COPY_AND_ASSIGN(JobTaskSource);
 };

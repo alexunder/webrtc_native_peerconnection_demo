@@ -6,6 +6,7 @@
 #define BASE_ALLOCATOR_PARTITION_ALLOCATOR_PARTITION_ALLOC_CONSTANTS_H_
 
 #include <limits.h>
+#include <algorithm>
 #include <cstddef>
 
 #include "base/allocator/partition_allocator/checked_ptr_support.h"
@@ -14,6 +15,17 @@
 #include "build/build_config.h"
 
 namespace base {
+
+// ARCH_CPU_64_BITS implies 64-bit instruction set, but not necessarily 64-bit
+// address space. The only known case where address space is 32-bit is NaCl, so
+// eliminate it explicitly. static_assert below ensures that other won't slip
+// through.
+#if defined(ARCH_CPU_64_BITS) && !defined(OS_NACL)
+#define PA_HAS_64_BITS_POINTERS
+static_assert(sizeof(void*) == 8, "");
+#else
+static_assert(sizeof(void*) != 8, "");
+#endif
 
 // Underlying partition storage pages (`PartitionPage`s) are a power-of-2 size.
 // It is typical for a `PartitionPage` to be based on multiple system pages.
@@ -35,7 +47,7 @@ namespace base {
 static const size_t kPartitionPageShift = 16;  // 64 KiB
 #elif defined(ARCH_CPU_PPC64)
 static const size_t kPartitionPageShift = 18;  // 256 KiB
-#elif defined(OS_MACOSX) && defined(ARCH_CPU_ARM64)
+#elif defined(OS_APPLE) && defined(ARCH_CPU_ARM64)
 static const size_t kPartitionPageShift = 16;  // 64 KiB
 #else
 static const size_t kPartitionPageShift = 14;  // 16 KiB
@@ -118,14 +130,18 @@ static const size_t kMaxSystemPagesPerSlotSpan =
 //     | Guard page (4 KiB, 32-bit only) |
 //     +---------------------------------+
 //
-// A direct-mapped page's metadata page has the following layout:
+// A direct-mapped page's metadata page has the following layout (on 64 bit
+// architectures. On 32 bit ones, the layout is identical, some sizes are
+// different due to smaller pointers.):
 //
-//     +---------------------------------+
-//     | SuperPageExtentEntry (32 B)     |
-//     | PartitionPage (32 B)            |
-//     | PartitionBucket (32 B)          |
-//     | PartitionDirectMapExtent (32 B) |
-//     +---------------------------------+
+//     +----------------------------------+
+//     | SuperPageExtentEntry (32 B)      |
+//     | PartitionPage (32 B)             |
+//     | PartitionBucket (40 B)           |
+//     | PartitionDirectMapExtent (32 B)  |
+//     +----------------------------------+
+//
+// See |PartitionDirectMapMetadata| for details.
 
 static const size_t kSuperPageShift = 21;  // 2 MiB
 static const size_t kSuperPageSize = 1 << kSuperPageShift;
@@ -133,6 +149,27 @@ static const size_t kSuperPageOffsetMask = kSuperPageSize - 1;
 static const size_t kSuperPageBaseMask = ~kSuperPageOffsetMask;
 static const size_t kNumPartitionPagesPerSuperPage =
     kSuperPageSize / kPartitionPageSize;
+
+// Alignment has two constraints:
+// - Alignment requirement for scalar types: alignof(std::max_align_t)
+// - Alignment requirement for operator new().
+//
+// The two are separate on Windows 64 bits, where the first one is 8 bytes, and
+// the second one 16. We could technically return something different for
+// malloc() and operator new(), but this would complicate things, and most of
+// our allocations are presumaly coming from operator new() anyway.
+//
+// __STDCPP_DEFAULT_NEW_ALIGNMENT__ is C++17. As such, it is not defined on all
+// platforms, as Chrome's requirement is C++14 as of 2020.
+#if defined(__STDCPP_DEFAULT_NEW_ALIGNMENT__)
+static constexpr size_t kAlignment =
+    std::max(alignof(std::max_align_t), __STDCPP_DEFAULT_NEW_ALIGNMENT__);
+#else
+static constexpr size_t kAlignment = alignof(std::max_align_t);
+#endif
+static_assert(kAlignment <= 16,
+              "PartitionAlloc doesn't support a fundamental alignment larger "
+              "than 16 bytes.");
 
 // The "order" of an allocation is closely related to the power-of-1 size of the
 // allocation. More precisely, the order is the bit index of the
@@ -142,9 +179,6 @@ static const size_t kNumPartitionPagesPerSuperPage =
 // In terms of allocation sizes, order 0 covers 0, order 1 covers 1, order 2
 // covers 2->3, order 3 covers 4->7, order 4 covers 8->15.
 
-static_assert(alignof(std::max_align_t) <= 16,
-              "PartitionAlloc doesn't support a fundamental alignment larger "
-              "than 16 bytes.");
 // PartitionAlloc should return memory properly aligned for any type, to behave
 // properly as a generic allocator. This is not strictly required as long as
 // types are explicitly allocated with PartitionAlloc, but is to use it as a
@@ -157,7 +191,7 @@ static_assert(alignof(std::max_align_t) <= 16,
 static const size_t kMinBucketedOrder = 5;
 #else
 static const size_t kMinBucketedOrder =
-    alignof(std::max_align_t) == 16 ? 5 : 4;  // 2^(order - 1), that is 16 or 8.
+    kAlignment == 16 ? 5 : 4;  // 2^(order - 1), that is 16 or 8.
 #endif
 // The largest bucketed order is 1 << (20 - 1), storing [512 KiB, 1 MiB):
 static const size_t kMaxBucketedOrder = 20;
@@ -176,8 +210,13 @@ static const size_t kMaxBucketed =
     ((kNumBucketsPerOrder - 1) * kMaxBucketSpacing);
 // Limit when downsizing a direct mapping using `realloc`:
 static const size_t kMinDirectMappedDownsize = kMaxBucketed + 1;
-static const size_t kMaxDirectMapped =
-    (1UL << 31) + kPageAllocationGranularity;  // 2 GiB plus 1 more page.
+// Intentionally set to less than 2GiB to make sure that a 2GiB allocation
+// fails. This is a security choice in Chrome, to help making size_t vs int bugs
+// harder to exploit.
+//
+// There are matching limits in other allocators, such as tcmalloc. See
+// crbug.com/998048 for details.
+static const size_t kMaxDirectMapped = (1UL << 31) - kPageAllocationGranularity;
 static const size_t kBitsPerSizeT = sizeof(void*) * CHAR_BIT;
 
 // Constant for the memory reclaim logic.
@@ -198,8 +237,9 @@ static const unsigned char kFreedByte = 0xCD;
 enum PartitionAllocFlags {
   PartitionAllocReturnNull = 1 << 0,
   PartitionAllocZeroFill = 1 << 1,
+  PartitionAllocNoHooks = 1 << 2,  // Internal only.
 
-  PartitionAllocLastFlag = PartitionAllocZeroFill
+  PartitionAllocLastFlag = PartitionAllocNoHooks
 };
 
 }  // namespace base

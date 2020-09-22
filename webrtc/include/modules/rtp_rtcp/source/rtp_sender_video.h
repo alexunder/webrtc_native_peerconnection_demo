@@ -32,7 +32,6 @@
 #include "modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.h"
 #include "modules/rtp_rtcp/source/rtp_video_header.h"
 #include "modules/rtp_rtcp/source/video_fec_generator.h"
-#include "rtc_base/deprecation.h"
 #include "rtc_base/one_time_event.h"
 #include "rtc_base/race_checker.h"
 #include "rtc_base/rate_statistics.h"
@@ -42,7 +41,6 @@
 
 namespace webrtc {
 
-class RTPFragmentationHeader;
 class FrameEncryptorInterface;
 class RtpPacketizer;
 class RtpPacketToSend;
@@ -91,28 +89,21 @@ class RTPSenderVideo {
 
   virtual ~RTPSenderVideo();
 
-  RTC_DEPRECATED
-  bool SendVideo(int payload_type,
-                 absl::optional<VideoCodecType> codec_type,
-                 uint32_t rtp_timestamp,
-                 int64_t capture_time_ms,
-                 rtc::ArrayView<const uint8_t> payload,
-                 const RTPFragmentationHeader* /*fragmentation*/,
-                 RTPVideoHeader video_header,
-                 absl::optional<int64_t> expected_retransmission_time_ms) {
-    return SendVideo(payload_type, codec_type, rtp_timestamp, capture_time_ms,
-                     payload, video_header, expected_retransmission_time_ms);
-  }
-
   // expected_retransmission_time_ms.has_value() -> retransmission allowed.
   // Calls to this method is assumed to be externally serialized.
+  // |estimated_capture_clock_offset_ms| is an estimated clock offset between
+  // this sender and the original capturer, for this video packet. See
+  // http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time for more
+  // details. If the sender and the capture has the same clock, it is supposed
+  // to be zero valued, which is given as the default.
   bool SendVideo(int payload_type,
                  absl::optional<VideoCodecType> codec_type,
                  uint32_t rtp_timestamp,
                  int64_t capture_time_ms,
                  rtc::ArrayView<const uint8_t> payload,
                  RTPVideoHeader video_header,
-                 absl::optional<int64_t> expected_retransmission_time_ms);
+                 absl::optional<int64_t> expected_retransmission_time_ms,
+                 absl::optional<int64_t> estimated_capture_clock_offset_ms = 0);
 
   bool SendEncodedImage(
       int payload_type,
@@ -194,7 +185,7 @@ class RTPSenderVideo {
       RTC_GUARDED_BY(send_checker_);
 
   // Current target playout delay.
-  PlayoutDelay current_playout_delay_ RTC_GUARDED_BY(send_checker_);
+  VideoPlayoutDelay current_playout_delay_ RTC_GUARDED_BY(send_checker_);
   // Flag indicating if we need to propagate |current_playout_delay_| in order
   // to guarantee it gets delivered.
   bool playout_delay_pending_;
@@ -233,6 +224,8 @@ class RTPSenderVideo {
 
   const rtc::scoped_refptr<RTPSenderVideoFrameTransformerDelegate>
       frame_transformer_delegate_;
+
+  const bool include_capture_clock_offset_;
 };
 
 }  // namespace webrtc

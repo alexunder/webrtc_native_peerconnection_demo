@@ -45,9 +45,11 @@ class AudioChannel : public rtc::RefCountInterface {
   ChannelId GetId() const { return id_; }
 
   // APIs to start/stop audio channel on each direction.
-  void StartSend();
+  // StartSend/StartPlay returns false if encoder/decoders
+  // have not been set, respectively.
+  bool StartSend();
   void StopSend();
-  void StartPlay();
+  bool StartPlay();
   void StopPlay();
 
   // APIs relayed to AudioEgress.
@@ -60,6 +62,12 @@ class AudioChannel : public rtc::RefCountInterface {
   }
   absl::optional<SdpAudioFormat> GetEncoderFormat() const {
     return egress_->GetEncoderFormat();
+  }
+  void RegisterTelephoneEventType(int rtp_payload_type, int sample_rate_hz) {
+    egress_->RegisterTelephoneEventType(rtp_payload_type, sample_rate_hz);
+  }
+  bool SendTelephoneEvent(int dtmf_event, int duration_ms) {
+    return egress_->SendTelephoneEvent(dtmf_event, duration_ms);
   }
 
   // APIs relayed to AudioIngress.

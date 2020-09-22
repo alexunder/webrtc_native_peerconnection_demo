@@ -10,9 +10,9 @@
 #include <memory>
 #include <queue>
 #include <set>
+#include <utility>
 
 #include "base/callback.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/pending_task.h"
@@ -74,6 +74,8 @@ class BASE_EXPORT TaskQueueImpl {
                 TimeDomain* time_domain,
                 const TaskQueue::Spec& spec);
 
+  TaskQueueImpl(const TaskQueueImpl&) = delete;
+  TaskQueueImpl& operator=(const TaskQueueImpl&) = delete;
   ~TaskQueueImpl();
 
   // Types of queues TaskQueueImpl is maintaining internally.
@@ -95,6 +97,7 @@ class BASE_EXPORT TaskQueueImpl {
       RepeatingCallback<void(const Task&, const TaskQueue::TaskTiming&)>;
   using OnTaskCompletedHandler =
       RepeatingCallback<void(const Task&, TaskQueue::TaskTiming*, LazyNow*)>;
+  using OnTaskPostedHandler = RepeatingCallback<void(const Task&)>;
 
   // May be called from any thread.
   scoped_refptr<SingleThreadTaskRunner> CreateTaskRunner(
@@ -217,6 +220,13 @@ class BASE_EXPORT TaskQueueImpl {
                        LazyNow* lazy_now);
   bool RequiresTaskTiming() const;
 
+  // Set a callback for adding custom functionality for processing posted task.
+  // Callback will be dispatched while holding a scheduler lock. As a result,
+  // callback should not call scheduler APIs directly, as this can lead to
+  // deadlocks. For example, PostTask should not be called directly and
+  // ScopedDeferTaskPosting::PostOrDefer should be used instead.
+  void SetOnTaskPostedHandler(OnTaskPostedHandler handler);
+
   WeakPtr<SequenceManagerImpl> GetSequenceManagerWeakPtr();
 
   SequenceManagerImpl* sequence_manager() const { return sequence_manager_; }
@@ -300,6 +310,8 @@ class BASE_EXPORT TaskQueueImpl {
   struct DelayedIncomingQueue {
    public:
     DelayedIncomingQueue();
+    DelayedIncomingQueue(const DelayedIncomingQueue&) = delete;
+    DelayedIncomingQueue& operator=(const DelayedIncomingQueue&) = delete;
     ~DelayedIncomingQueue();
 
     void push(Task&& task);
@@ -328,8 +340,6 @@ class BASE_EXPORT TaskQueueImpl {
 
     // Number of pending tasks in the queue that need high resolution timing.
     int pending_high_res_tasks_ = 0;
-
-    DISALLOW_COPY_AND_ASSIGN(DelayedIncomingQueue);
   };
 
   struct MainThreadOnly {
@@ -497,6 +507,8 @@ class BASE_EXPORT TaskQueueImpl {
 
     bool unregistered = false;
 
+    OnTaskPostedHandler on_task_posted_handler;
+
 #if DCHECK_IS_ON()
     // A cache of |immediate_work_queue->work_queue_set_index()| which is used
     // to index into
@@ -530,8 +542,6 @@ class BASE_EXPORT TaskQueueImpl {
   const bool should_monitor_quiescence_;
   const bool should_notify_observers_;
   const bool delayed_fence_allowed_;
-
-  DISALLOW_COPY_AND_ASSIGN(TaskQueueImpl);
 };
 
 }  // namespace internal

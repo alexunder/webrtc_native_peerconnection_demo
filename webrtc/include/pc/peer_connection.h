@@ -260,14 +260,15 @@ class PeerConnection : public PeerConnectionInternal,
 
   void Close() override;
 
+  rtc::Thread* signaling_thread() const final {
+    return factory_->signaling_thread();
+  }
+
   // PeerConnectionInternal implementation.
   rtc::Thread* network_thread() const final {
     return factory_->network_thread();
   }
   rtc::Thread* worker_thread() const final { return factory_->worker_thread(); }
-  rtc::Thread* signaling_thread() const final {
-    return factory_->signaling_thread();
-  }
 
   std::string session_id() const override {
     RTC_DCHECK_RUN_ON(signaling_thread());
@@ -329,6 +330,8 @@ class PeerConnection : public PeerConnectionInternal,
   bool GetSctpSslRole(rtc::SSLRole* role);
   // Handler for the "channel closed" signal
   void OnSctpDataChannelClosed(DataChannelInterface* channel);
+
+  bool ShouldFireNegotiationNeededEvent(uint32_t event_id) override;
 
   // Functions made public for testing.
   void ReturnHistogramVeryQuicklyForTesting() {
@@ -933,6 +936,10 @@ class PeerConnection : public PeerConnectionInternal,
   RTCError UpdateSessionState(SdpType type,
                               cricket::ContentSource source,
                               const cricket::SessionDescription* description);
+  // Based on number of transceivers per media type, enabled or disable
+  // payload type based demuxing in the affected channels.
+  void UpdatePayloadTypeDemuxingState(cricket::ContentSource source)
+      RTC_RUN_ON(signaling_thread());
   // Push the media parts of the local or remote session description
   // down to all of the channels.
   RTCError PushdownMediaDescription(SdpType type, cricket::ContentSource source)
@@ -1133,9 +1140,11 @@ class PeerConnection : public PeerConnectionInternal,
 
   void UpdateNegotiationNeeded();
   bool CheckIfNegotiationIsNeeded();
+  void OnOperationsChainEmpty();
+  void GenerateNegotiationNeededEvent();
 
-  // | sdp_type | is the type of the SDP that caused the rollback.
-  RTCError Rollback(SdpType sdp_type);
+  // | desc_type | is the type of the description that caused the rollback.
+  RTCError Rollback(SdpType desc_type);
 
   // Storing the factory as a scoped reference pointer ensures that the memory
   // in the PeerConnectionFactoryImpl remains available as long as the
@@ -1179,10 +1188,10 @@ class PeerConnection : public PeerConnectionInternal,
   // is not injected. It should be required once chromium supplies it.
   std::unique_ptr<AsyncResolverFactory> async_resolver_factory_
       RTC_GUARDED_BY(signaling_thread());
+  std::unique_ptr<rtc::PacketSocketFactory> packet_socket_factory_;
   std::unique_ptr<cricket::PortAllocator>
       port_allocator_;  // TODO(bugs.webrtc.org/9987): Accessed on both
                         // signaling and network thread.
-  std::unique_ptr<rtc::PacketSocketFactory> packet_socket_factory_;
   std::unique_ptr<webrtc::IceTransportFactory>
       ice_transport_factory_;  // TODO(bugs.webrtc.org/9987): Accessed on the
                                // signaling thread but the underlying raw
@@ -1269,9 +1278,6 @@ class PeerConnection : public PeerConnectionInternal,
   std::unique_ptr<JsepTransportController>
       transport_controller_;  // TODO(bugs.webrtc.org/9987): Accessed on both
                               // signaling and network thread.
-  std::unique_ptr<cricket::SctpTransportInternalFactory>
-      sctp_factory_;  // TODO(bugs.webrtc.org/9987): Accessed on both
-                      // signaling and network thread.
 
   // |sctp_mid_| is the content name (MID) in SDP.
   // Note: this is used as the data channel MID by both SCTP and data channel
@@ -1331,6 +1337,9 @@ class PeerConnection : public PeerConnectionInternal,
   std::unique_ptr<LocalIceCredentialsToReplace>
       local_ice_credentials_to_replace_ RTC_GUARDED_BY(signaling_thread());
   bool is_negotiation_needed_ RTC_GUARDED_BY(signaling_thread()) = false;
+  bool update_negotiation_needed_on_empty_chain_
+      RTC_GUARDED_BY(signaling_thread()) = false;
+  uint32_t negotiation_needed_event_id_ = 0;
 
   DataChannelController data_channel_controller_;
   rtc::WeakPtrFactory<PeerConnection> weak_ptr_factory_

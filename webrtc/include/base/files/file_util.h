@@ -81,23 +81,6 @@ BASE_EXPORT bool DeleteFile(const FilePath& path);
 // WARNING: USING THIS EQUIVALENT TO "rm -rf", SO USE WITH CAUTION.
 BASE_EXPORT bool DeletePathRecursively(const FilePath& path);
 
-// DEPRECATED. Please use the functions immediately above.
-// https://crbug.com/1009837
-//
-// Deletes the given path, whether it's a file or a directory.
-// If it's a directory, it's perfectly happy to delete all of the
-// directory's contents.  Passing true to recursively delete
-// subdirectories and their contents as well.
-// Returns true if successful, false otherwise. It is considered successful
-// to attempt to delete a file that does not exist.
-//
-// In POSIX environment and if |path| is a symbolic link, this deletes only
-// the symlink. (even if the symlink points to a non-existent file)
-//
-// WARNING: USING THIS WITH recursive==true IS EQUIVALENT
-//          TO "rm -rf", SO USE WITH CAUTION.
-BASE_EXPORT bool DeleteFile(const FilePath& path, bool recursive);
-
 // Simplified way to get a callback to do DeleteFile(path) and ignore the
 // DeleteFile() result.
 BASE_EXPORT OnceCallback<void(const FilePath&)> GetDeleteFileCallback();
@@ -177,6 +160,9 @@ BASE_EXPORT bool CopyDirectoryExcl(const FilePath& from_path,
 // Returns true if the given path exists on the local filesystem,
 // false otherwise.
 BASE_EXPORT bool PathExists(const FilePath& path);
+
+// Returns true if the given path is readable by the user, false otherwise.
+BASE_EXPORT bool PathIsReadable(const FilePath& path);
 
 // Returns true if the given path is writable by the user, false otherwise.
 BASE_EXPORT bool PathIsWritable(const FilePath& path);
@@ -292,14 +278,14 @@ BASE_EXPORT bool SetPosixFilePermissions(const FilePath& path, int mode);
 BASE_EXPORT bool ExecutableExistsInPath(Environment* env,
                                         const FilePath::StringType& executable);
 
-#if defined(OS_LINUX) || defined(OS_AIX)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_AIX)
 // Determine if files under a given |path| can be mapped and then mprotect'd
 // PROT_EXEC. This depends on the mount options used for |path|, which vary
 // among different Linux distributions and possibly local configuration. It also
 // depends on details of kernel--ChromeOS uses the noexec option for /dev/shm
 // but its kernel allows mprotect with PROT_EXEC anyway.
 BASE_EXPORT bool IsPathExecutable(const FilePath& path);
-#endif  // OS_LINUX || OS_AIX
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_AIX)
 
 #endif  // OS_POSIX
 
@@ -591,7 +577,7 @@ BASE_EXPORT bool VerifyPathControlledByUser(const base::FilePath& base,
                                             const std::set<gid_t>& group_gids);
 #endif  // defined(OS_POSIX) || defined(OS_FUCHSIA)
 
-#if defined(OS_MACOSX) && !defined(OS_IOS)
+#if defined(OS_MAC)
 // Is |path| writable only by a user with administrator privileges?
 // This function uses Mac OS conventions.  The super user is assumed to have
 // uid 0, and the administrator group is assumed to be named "admin".
@@ -600,13 +586,13 @@ BASE_EXPORT bool VerifyPathControlledByUser(const base::FilePath& base,
 // "admin", are not writable by all users, and contain no symbolic links.
 // Will return false if |path| does not exist.
 BASE_EXPORT bool VerifyPathControlledByAdmin(const base::FilePath& path);
-#endif  // defined(OS_MACOSX) && !defined(OS_IOS)
+#endif  // defined(OS_MAC)
 
 // Returns the maximum length of path component on the volume containing
 // the directory |path|, in the number of FilePath::CharType, or -1 on failure.
 BASE_EXPORT int GetMaximumPathComponentLength(const base::FilePath& path);
 
-#if defined(OS_LINUX) || defined(OS_AIX)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_AIX)
 // Broad categories of file systems as returned by statfs() on Linux.
 enum FileSystemType {
   FILE_SYSTEM_UNKNOWN,  // statfs failed.

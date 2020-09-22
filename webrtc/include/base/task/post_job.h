@@ -60,21 +60,11 @@ class BASE_EXPORT JobDelegate {
  private:
   static constexpr uint8_t kInvalidTaskId = std::numeric_limits<uint8_t>::max();
 
-  // Verifies that either max concurrency is lower or equal to
-  // |expected_max_concurrency|, or there is an increase version update
-  // triggered by NotifyConcurrencyIncrease().
-  void AssertExpectedConcurrency(size_t expected_max_concurrency);
-
   internal::JobTaskSource* const task_source_;
   internal::PooledTaskRunnerDelegate* const pooled_task_runner_delegate_;
   uint8_t task_id_ = kInvalidTaskId;
 
 #if DCHECK_IS_ON()
-  // Used in AssertExpectedConcurrency(), see that method's impl for details.
-  // Value of max concurrency recorded before running the worker task.
-  size_t recorded_max_concurrency_;
-  // Value of the increase version recorded before running the worker task.
-  size_t recorded_increase_version_;
   // Value returned by the last call to ShouldYield().
   bool last_should_yield_ = false;
 #endif
@@ -97,6 +87,9 @@ class BASE_EXPORT JobHandle {
 
   // Returns true if associated with a Job.
   explicit operator bool() const { return task_source_ != nullptr; }
+
+  // Returns true if there's no work pending and no worker running.
+  bool IsCompleted() const;
 
   // Update this Job's priority.
   void UpdatePriority(TaskPriority new_priority);
@@ -131,6 +124,15 @@ class BASE_EXPORT JobHandle {
 
   DISALLOW_COPY_AND_ASSIGN(JobHandle);
 };
+
+// Callback used in PostJob() to control the maximum number of threads calling
+// the worker task concurrently.
+
+// Returns the maximum number of threads which may call a job's worker task
+// concurrently. |worker_count| is the number of threads currently assigned to
+// this job which some callers may need to determine their return value.
+using MaxConcurrencyCallback =
+    RepeatingCallback<size_t(size_t /*worker_count*/)>;
 
 // Posts a repeating |worker_task| with specific |traits| to run in parallel on
 // base::ThreadPool.
@@ -177,11 +179,10 @@ class BASE_EXPORT JobHandle {
 // |traits| requirements:
 // - base::ThreadPolicy must be specified if the priority of the task runner
 //   will ever be increased from BEST_EFFORT.
-JobHandle BASE_EXPORT
-PostJob(const Location& from_here,
-        const TaskTraits& traits,
-        RepeatingCallback<void(JobDelegate*)> worker_task,
-        RepeatingCallback<size_t()> max_concurrency_callback);
+JobHandle BASE_EXPORT PostJob(const Location& from_here,
+                              const TaskTraits& traits,
+                              RepeatingCallback<void(JobDelegate*)> worker_task,
+                              MaxConcurrencyCallback max_concurrency_callback);
 
 }  // namespace base
 

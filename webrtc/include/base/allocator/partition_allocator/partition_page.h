@@ -11,7 +11,6 @@
 #include "base/allocator/partition_allocator/partition_alloc_constants.h"
 #include "base/allocator/partition_allocator/partition_alloc_forward.h"
 #include "base/allocator/partition_allocator/partition_bucket.h"
-#include "base/allocator/partition_allocator/partition_cookie.h"
 #include "base/allocator/partition_allocator/partition_freelist_entry.h"
 #include "base/allocator/partition_allocator/partition_tag.h"
 #include "base/allocator/partition_allocator/random.h"
@@ -20,6 +19,19 @@
 
 namespace base {
 namespace internal {
+
+// An "extent" is a span of consecutive superpages. We link the partition's next
+// extent (if there is one) to the very start of a superpage's metadata area.
+template <bool thread_safe>
+struct PartitionSuperPageExtentEntry {
+  PartitionRoot<thread_safe>* root;
+  char* super_page_base;
+  char* super_pages_end;
+  PartitionSuperPageExtentEntry<thread_safe>* next;
+};
+static_assert(
+    sizeof(PartitionSuperPageExtentEntry<ThreadSafe>) <= kPageMetadataSize,
+    "PartitionSuperPageExtentEntry must be able to fit in a metadata slot");
 
 // PartitionPage::Free() defers unmapping a large page until the lock is
 // released. Callers of PartitionPage::Free() must invoke Run().
@@ -68,17 +80,27 @@ struct DeferredUnmap {
 // updated.
 template <bool thread_safe>
 struct PartitionPage {
-  PartitionFreelistEntry* freelist_head;
-  PartitionPage<thread_safe>* next_page;
-  PartitionBucket<thread_safe>* bucket;
-  // Deliberately signed, 0 for empty or decommitted page, -n for full pages:
-  int16_t num_allocated_slots;
-  uint16_t num_unprovisioned_slots;
-  uint16_t page_offset;
-  int16_t empty_cache_index;  // -1 if not in the empty cache.
+  union {
+    struct {
+      PartitionFreelistEntry* freelist_head;
+      PartitionPage<thread_safe>* next_page;
+      PartitionBucket<thread_safe>* bucket;
+      // Deliberately signed, 0 for empty or decommitted page, -n for full
+      // pages:
+      int16_t num_allocated_slots;
+      uint16_t num_unprovisioned_slots;
+      uint16_t page_offset;
+      int16_t empty_cache_index;  // -1 if not in the empty cache.
+    };
 
+    // sizeof(PartitionPage) must always be:
+    // - a power of 2 (for fast modulo operations)
+    // - below kPageMetadataSize
+    //
+    // This makes sure that this is respected no matter the architecture.
+    char optional_padding[kPageMetadataSize];
+  };
   // Public API
-
   // Note the matching Alloc() functions are in PartitionPage.
   // Callers must invoke DeferredUnmap::Run() after releasing the lock.
   BASE_EXPORT NOINLINE DeferredUnmap FreeSlowPath() WARN_UNUSED_RESULT;
@@ -93,6 +115,21 @@ struct PartitionPage {
   ALWAYS_INLINE static void* ToPointer(const PartitionPage* page);
   ALWAYS_INLINE static PartitionPage* FromPointerNoAlignmentCheck(void* ptr);
   ALWAYS_INLINE static PartitionPage* FromPointer(void* ptr);
+
+  // Returns either the exact allocated size for direct-mapped and single-slot
+  // buckets, or the slot size. The second one is an overestimate of the real
+  // allocated size.
+  ALWAYS_INLINE size_t GetAllocatedSize() const {
+    // Allocated size can be:
+    // - The slot size for small enough buckets.
+    // - Stored exactly, for large buckets (see get_raw_size_ptr()), and
+    //   direct-mapped allocations.
+    size_t result = bucket->slot_size;
+    if (UNLIKELY(get_raw_size_ptr()))  // has row size.
+      result = get_raw_size();
+
+    return result;
+  }
 
   ALWAYS_INLINE const size_t* get_raw_size_ptr() const;
   ALWAYS_INLINE size_t* get_raw_size_ptr() {
@@ -132,7 +169,7 @@ struct PartitionPage {
   // namespace so the getter can be fully inlined.
   static PartitionPage sentinel_page_;
 };
-static_assert(sizeof(PartitionPage<ThreadSafe>) <= kPageMetadataSize,
+static_assert(sizeof(PartitionPage<ThreadSafe>) == kPageMetadataSize,
               "PartitionPage must be able to fit in a metadata slot");
 
 ALWAYS_INLINE char* PartitionSuperPageToMetadataArea(char* ptr) {
@@ -216,10 +253,11 @@ PartitionPage<thread_safe>::FromPointer(void* ptr) {
 template <bool thread_safe>
 ALWAYS_INLINE const size_t* PartitionPage<thread_safe>::get_raw_size_ptr()
     const {
-  // For single-slot buckets which span more than one partition page, we
-  // have some spare metadata space to store the raw allocation size. We
-  // can use this to report better statistics.
-  if (bucket->slot_size <= kMaxSystemPagesPerSlotSpan * kSystemPageSize)
+  // For single-slot buckets which span more than
+  // |kMaxPartitionPagesPerSlotSpan| partition pages, we have some spare
+  // metadata space to store the raw allocation size. We can use this to report
+  // better statistics.
+  if (LIKELY(bucket->slot_size <= kMaxSystemPagesPerSlotSpan * kSystemPageSize))
     return nullptr;
 
   PA_DCHECK((bucket->slot_size % kSystemPageSize) == 0);
@@ -242,22 +280,6 @@ ALWAYS_INLINE DeferredUnmap PartitionPage<thread_safe>::Free(void* ptr) {
 #if DCHECK_IS_ON()
   auto* root = PartitionRoot<thread_safe>::FromPage(this);
   root->lock_.AssertAcquired();
-
-  size_t slot_size = bucket->slot_size;
-  const size_t raw_size = get_raw_size();
-  if (raw_size) {
-    slot_size = raw_size;
-  }
-
-  // If these asserts fire, you probably corrupted memory.
-  if (root->allow_extras) {
-    PartitionCookieCheckValue(reinterpret_cast<char*>(ptr) +
-                              kInSlotTagBufferSize);
-    PartitionCookieCheckValue(reinterpret_cast<char*>(ptr) + slot_size -
-                              kCookieSize);
-  }
-
-  memset(ptr, kFreedByte, slot_size);
 #endif
 
   PA_DCHECK(num_allocated_slots);

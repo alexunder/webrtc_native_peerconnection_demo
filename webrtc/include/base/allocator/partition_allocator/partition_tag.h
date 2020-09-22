@@ -25,9 +25,11 @@ namespace internal {
 // TODO(tasak): add a description about the partition tag.
 using PartitionTag = uint8_t;
 
-// Allocate extra 16 bytes for the partition tag. 14 bytes are unused
-// (reserved).
-static constexpr size_t kInSlotTagBufferSize = 16;
+// Allocate extra space for the partition tag to satisfy the alignment
+// requirement.
+static constexpr size_t kInSlotTagBufferSize = base::kAlignment;
+static_assert(sizeof(PartitionTag) <= kInSlotTagBufferSize,
+              "PartitionTag should fit into the in-slot buffer.");
 
 #if DCHECK_IS_ON()
 // The layout inside the slot is |tag|cookie|object|(empty)|cookie|.
@@ -145,6 +147,24 @@ ALWAYS_INLINE void PartitionTagClearValue(void* ptr, size_t size) {
                                        << tag_bitmap::kPartitionTagSizeShift;
   PA_DCHECK(!memchr(PartitionTagPointer(ptr), 0, tag_region_size));
   memset(PartitionTagPointer(ptr), 0, tag_region_size);
+}
+
+ALWAYS_INLINE void PartitionTagIncrementValue(void* ptr, size_t size) {
+  PartitionTag tag = PartitionTagGetValue(ptr);
+  PartitionTag new_tag = tag;
+  ++new_tag;
+  new_tag += !new_tag;  // Avoid 0.
+#if DCHECK_IS_ON()
+  // This verifies that tags for the entire slot have the same value and that
+  // |size| doesn't exceed the slot size.
+  size_t tag_count = size >> tag_bitmap::kBytesPerPartitionTagShift;
+  PartitionTag* tag_ptr = PartitionTagPointer(ptr);
+  while (tag_count-- > 0) {
+    PA_DCHECK(tag == *tag_ptr);
+    tag_ptr++;
+  }
+#endif
+  PartitionTagSetValue(ptr, size, new_tag);
 }
 
 #elif ENABLE_TAG_FOR_SINGLE_TAG_CHECKED_PTR

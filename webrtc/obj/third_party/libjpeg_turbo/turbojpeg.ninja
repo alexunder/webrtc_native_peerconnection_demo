@@ -1,0 +1,21 @@
+defines = -DWITH_SIMD -DBMP_SUPPORTED -DPPM_SUPPORTED -DUSE_UDEV -DUSE_AURA=1 -DUSE_GLIB=1 -DUSE_NSS_CERTS=1 -DUSE_OZONE=1 -DUSE_X11=1 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D_FORTIFY_SOURCE=2 -DCR_SYSROOT_HASH=5f64b417e1018dcf8fcc81dc2714e0f264b9b911 -DNDEBUG -DNVALGRIND -DDYNAMIC_ANNOTATIONS_ENABLED=0
+include_dirs = -I../.. -Igen -I../../third_party/libjpeg_turbo
+cflags = -fno-strict-aliasing --param=ssp-buffer-size=4 -fstack-protector -funwind-tables -fPIC -pipe -pthread -m64 -march=x86-64 -Wno-builtin-macro-redefined -D__DATE__= -D__TIME__= -D__TIMESTAMP__= -Wall -Wno-unused-local-typedefs -Wno-maybe-uninitialized -Wno-deprecated-declarations -Wno-comments -Wno-packed-not-aligned -Wno-missing-field-initializers -Wno-unused-parameter -O2 -fno-ident -fdata-sections -ffunction-sections -fno-omit-frame-pointer -g0 -fvisibility=hidden
+cflags_c = -std=gnu11 --sysroot=../../build/linux/debian_sid_amd64-sysroot
+label_name = turbojpeg
+target_out_dir = obj/third_party/libjpeg_turbo
+target_output_name = libturbojpeg
+
+build obj/third_party/libjpeg_turbo/turbojpeg/turbojpeg.o: cc ../../third_party/libjpeg_turbo/turbojpeg.c
+build obj/third_party/libjpeg_turbo/turbojpeg/transupp.o: cc ../../third_party/libjpeg_turbo/transupp.c
+build obj/third_party/libjpeg_turbo/turbojpeg/jdatadst-tj.o: cc ../../third_party/libjpeg_turbo/jdatadst-tj.c
+build obj/third_party/libjpeg_turbo/turbojpeg/jdatasrc-tj.o: cc ../../third_party/libjpeg_turbo/jdatasrc-tj.c
+build obj/third_party/libjpeg_turbo/turbojpeg/rdbmp.o: cc ../../third_party/libjpeg_turbo/rdbmp.c
+build obj/third_party/libjpeg_turbo/turbojpeg/rdppm.o: cc ../../third_party/libjpeg_turbo/rdppm.c
+build obj/third_party/libjpeg_turbo/turbojpeg/wrbmp.o: cc ../../third_party/libjpeg_turbo/wrbmp.c
+build obj/third_party/libjpeg_turbo/turbojpeg/wrppm.o: cc ../../third_party/libjpeg_turbo/wrppm.c
+
+build obj/third_party/libjpeg_turbo/libturbojpeg.a: alink obj/third_party/libjpeg_turbo/turbojpeg/turbojpeg.o obj/third_party/libjpeg_turbo/turbojpeg/transupp.o obj/third_party/libjpeg_turbo/turbojpeg/jdatadst-tj.o obj/third_party/libjpeg_turbo/turbojpeg/jdatasrc-tj.o obj/third_party/libjpeg_turbo/turbojpeg/rdbmp.o obj/third_party/libjpeg_turbo/turbojpeg/rdppm.o obj/third_party/libjpeg_turbo/turbojpeg/wrbmp.o obj/third_party/libjpeg_turbo/turbojpeg/wrppm.o || obj/third_party/libjpeg_turbo/libjpeg.a obj/third_party/libjpeg_turbo/libjpeg_headers.stamp obj/third_party/libjpeg_turbo/libsimd.a obj/third_party/libjpeg_turbo/libsimd_asm.a
+  arflags = -T
+  output_extension = .a
+  output_dir = obj/third_party/libjpeg_turbo

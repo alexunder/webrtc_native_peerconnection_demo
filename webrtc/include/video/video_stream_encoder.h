@@ -28,7 +28,6 @@
 #include "api/video_codecs/video_codec.h"
 #include "api/video_codecs/video_encoder.h"
 #include "call/adaptation/adaptation_constraint.h"
-#include "call/adaptation/adaptation_listener.h"
 #include "call/adaptation/resource_adaptation_processor.h"
 #include "call/adaptation/resource_adaptation_processor_interface.h"
 #include "call/adaptation/video_source_restrictions.h"
@@ -41,6 +40,7 @@
 #include "rtc_base/rate_statistics.h"
 #include "rtc_base/synchronization/sequence_checker.h"
 #include "rtc_base/task_queue.h"
+#include "rtc_base/thread_annotations.h"
 #include "rtc_base/thread_checker.h"
 #include "system_wrappers/include/clock.h"
 #include "video/adaptation/video_stream_encoder_resource_manager.h"
@@ -113,9 +113,6 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   // Used for testing. For example the |ScalingObserverInterface| methods must
   // be called on |encoder_queue_|.
   rtc::TaskQueue* encoder_queue() { return &encoder_queue_; }
-  rtc::TaskQueue* resource_adaptation_queue() {
-    return &resource_adaptation_queue_;
-  }
 
   void OnVideoSourceRestrictionsUpdated(
       VideoSourceRestrictions restrictions,
@@ -128,9 +125,6 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   void InjectAdaptationResource(rtc::scoped_refptr<Resource> resource,
                                 VideoAdaptationReason reason);
   void InjectAdaptationConstraint(AdaptationConstraint* adaptation_constraint);
-
-  rtc::scoped_refptr<QualityScalerResource>
-  quality_scaler_resource_for_testing();
 
   void AddRestrictionsListenerForTesting(
       VideoSourceRestrictionsListener* restrictions_listener);
@@ -190,8 +184,7 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   // Implements EncodedImageCallback.
   EncodedImageCallback::Result OnEncodedImage(
       const EncodedImage& encoded_image,
-      const CodecSpecificInfo* codec_specific_info,
-      const RTPFragmentationHeader* fragmentation) override;
+      const CodecSpecificInfo* codec_specific_info) override;
 
   void OnDroppedFrame(EncodedImageCallback::DropReason reason) override;
 
@@ -215,6 +208,8 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
                      DataSize frame_size);
   bool HasInternalSource() const RTC_RUN_ON(&encoder_queue_);
   void ReleaseEncoder() RTC_RUN_ON(&encoder_queue_);
+  // After calling this function |resource_adaptation_processor_| will be null.
+  void ShutdownResourceAdaptationQueue();
 
   void CheckForAnimatedContent(const VideoFrame& frame,
                                int64_t time_when_posted_in_ms)
@@ -412,16 +407,16 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   VideoStreamInputStateProvider input_state_provider_;
 
   std::unique_ptr<VideoStreamAdapter> video_stream_adapter_
-      RTC_GUARDED_BY(&resource_adaptation_queue_);
+      RTC_GUARDED_BY(&encoder_queue_);
   // Responsible for adapting input resolution or frame rate to ensure resources
-  // (e.g. CPU or bandwidth) are not overused.
-  // Adding resources can occur on any thread, but all other methods need to be
-  // called on the adaptation thread.
+  // (e.g. CPU or bandwidth) are not overused. Adding resources can occur on any
+  // thread.
   std::unique_ptr<ResourceAdaptationProcessorInterface>
       resource_adaptation_processor_;
-  std::unique_ptr<DegradationPreferenceManager> degradation_preference_manager_;
+  std::unique_ptr<DegradationPreferenceManager> degradation_preference_manager_
+      RTC_GUARDED_BY(&encoder_queue_);
   std::vector<AdaptationConstraint*> adaptation_constraints_
-      RTC_GUARDED_BY(&resource_adaptation_queue_);
+      RTC_GUARDED_BY(&encoder_queue_);
   // Handles input, output and stats reporting related to VideoStreamEncoder
   // specific resources, such as "encode usage percent" measurements and "QP
   // scaling". Also involved with various mitigations such as inital frame
@@ -429,7 +424,10 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   // The manager primarily operates on the |encoder_queue_| but its lifetime is
   // tied to the VideoStreamEncoder (which is destroyed off the encoder queue)
   // and its resource list is accessible from any thread.
-  VideoStreamEncoderResourceManager stream_resource_manager_;
+  VideoStreamEncoderResourceManager stream_resource_manager_
+      RTC_GUARDED_BY(&encoder_queue_);
+  std::vector<rtc::scoped_refptr<Resource>> additional_resources_
+      RTC_GUARDED_BY(&encoder_queue_);
   // Carries out the VideoSourceRestrictions provided by the
   // ResourceAdaptationProcessor, i.e. reconfigures the source of video frames
   // to provide us with different resolution or frame rate.
@@ -438,10 +436,6 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
 
   // Public methods are proxied to the task queues. The queues must be destroyed
   // first to make sure no tasks run that use other members.
-  // TODO(https://crbug.com/webrtc/11172): Move ownership of the
-  // ResourceAdaptationProcessor and its task queue to Call when processors are
-  // multi-stream aware.
-  rtc::TaskQueue resource_adaptation_queue_;
   rtc::TaskQueue encoder_queue_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(VideoStreamEncoder);

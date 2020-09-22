@@ -119,8 +119,7 @@ class WebRtcVoiceEngine final : public VoiceEngineInterface {
   bool initialized_ = false;
 
   // Cache experimental_ns and apply in case they are missing in the audio
-  // options. We need to do this because SetExtraOptions() will revert to
-  // defaults for options which are not provided.
+  // options.
   absl::optional<bool> experimental_ns_;
   // Jitter buffer settings for new streams.
   size_t audio_jitter_buffer_max_packets_ = 200;
@@ -196,7 +195,7 @@ class WebRtcVoiceMediaChannel final : public VoiceMediaChannel,
   void OnNetworkRouteChanged(const std::string& transport_name,
                              const rtc::NetworkRoute& network_route) override;
   void OnReadyToSend(bool ready) override;
-  bool GetStats(VoiceMediaInfo* info) override;
+  bool GetStats(VoiceMediaInfo* info, bool get_and_clear_legacy_stats) override;
 
   // Set the audio sink for an existing stream.
   void SetRawAudioSink(

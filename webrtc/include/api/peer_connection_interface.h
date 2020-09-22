@@ -105,6 +105,7 @@
 #include "api/transport/bitrate_settings.h"
 #include "api/transport/enums.h"
 #include "api/transport/network_control.h"
+#include "api/transport/sctp_transport_factory_interface.h"
 #include "api/transport/webrtc_key_value_config.h"
 #include "api/turn_customizer.h"
 #include "media/base/media_config.h"
@@ -113,7 +114,7 @@
 // inject a PacketSocketFactory and/or NetworkManager, and not expose
 // PortAllocator in the PeerConnection api.
 #include "p2p/base/port_allocator.h"  // nogncheck
-#include "rtc_base/network.h"
+#include "rtc_base/network_monitor_factory.h"
 #include "rtc_base/rtc_certificate.h"
 #include "rtc_base/rtc_certificate_generator.h"
 #include "rtc_base/socket_address.h"
@@ -909,6 +910,10 @@ class RTC_EXPORT PeerConnectionInterface : public rtc::RefCountInterface {
       const std::string& label,
       const DataChannelInit* config) = 0;
 
+  // NOTE: For the following 6 methods, it's only safe to dereference the
+  // SessionDescriptionInterface on signaling_thread() (for example, calling
+  // ToString).
+
   // Returns the more recently applied description; "pending" if it exists, and
   // otherwise "current". See below.
   virtual const SessionDescriptionInterface* local_description() const = 0;
@@ -998,6 +1003,16 @@ class RTC_EXPORT PeerConnectionInterface : public rtc::RefCountInterface {
   // ones taking SetRemoteDescriptionObserverInterface as argument.
   virtual void SetRemoteDescription(SetSessionDescriptionObserver* observer,
                                     SessionDescriptionInterface* desc) {}
+
+  // According to spec, we must only fire "negotiationneeded" if the Operations
+  // Chain is empty. This method takes care of validating an event previously
+  // generated with PeerConnectionObserver::OnNegotiationNeededEvent() to make
+  // sure that even if there was a delay (e.g. due to a PostTask) between the
+  // event being generated and the time of firing, the Operations Chain is empty
+  // and the event is still valid to be fired.
+  virtual bool ShouldFireNegotiationNeededEvent(uint32_t event_id) {
+    return true;
+  }
 
   virtual PeerConnectionInterface::RTCConfiguration GetConfiguration() = 0;
 
@@ -1136,6 +1151,14 @@ class RTC_EXPORT PeerConnectionInterface : public rtc::RefCountInterface {
   // thus the observer object can be safely destroyed.
   virtual void Close() = 0;
 
+  // The thread on which all PeerConnectionObserver callbacks will be invoked,
+  // as well as callbacks for other classes such as DataChannelObserver.
+  //
+  // Also the only thread on which it's safe to use SessionDescriptionInterface
+  // pointers.
+  // TODO(deadbeef): Make pure virtual when all subclasses implement it.
+  virtual rtc::Thread* signaling_thread() const { return nullptr; }
+
  protected:
   // Dtor protected as objects shouldn't be deleted via this interface.
   ~PeerConnectionInterface() override = default;
@@ -1164,7 +1187,17 @@ class PeerConnectionObserver {
 
   // Triggered when renegotiation is needed. For example, an ICE restart
   // has begun.
-  virtual void OnRenegotiationNeeded() = 0;
+  // TODO(hbos): Delete in favor of OnNegotiationNeededEvent() when downstream
+  // projects have migrated.
+  virtual void OnRenegotiationNeeded() {}
+  // Used to fire spec-compliant onnegotiationneeded events, which should only
+  // fire when the Operations Chain is empty. The observer is responsible for
+  // queuing a task (e.g. Chromium: jump to main thread) to maybe fire the
+  // event. The event identified using |event_id| must only fire if
+  // PeerConnection::ShouldFireNegotiationNeededEvent() returns true since it is
+  // possible for the event to become invalidated by operations subsequently
+  // chained.
+  virtual void OnNegotiationNeededEvent(uint32_t event_id) {}
 
   // Called any time the legacy IceConnectionState changes.
   //
@@ -1326,7 +1359,12 @@ struct RTC_EXPORT PeerConnectionFactoryDependencies final {
   std::unique_ptr<NetworkStatePredictorFactoryInterface>
       network_state_predictor_factory;
   std::unique_ptr<NetworkControllerFactoryInterface> network_controller_factory;
+  // This will only be used if CreatePeerConnection is called without a
+  // |port_allocator|, causing the default allocator and network manager to be
+  // used.
+  std::unique_ptr<rtc::NetworkMonitorFactory> network_monitor_factory;
   std::unique_ptr<NetEqFactory> neteq_factory;
+  std::unique_ptr<SctpTransportFactoryInterface> sctp_factory;
   std::unique_ptr<WebRtcKeyValueConfig> trials;
 };
 
