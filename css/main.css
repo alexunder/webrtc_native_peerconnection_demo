@@ -1,0 +1,16 @@
+
+div.container {
+    width: auto;
+    hight: auto;
+}
+
+div.process {
+    width: auto;
+    hight: auto;
+}
+
+div.graph-container {
+  float: left;
+  margin: 0.5em;
+  width: calc(50% - 1em);
+}

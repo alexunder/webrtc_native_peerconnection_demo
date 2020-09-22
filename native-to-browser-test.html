@@ -1,6 +1,7 @@
 <html>
 <head>
-<title>PeerConnection server test page</title>
+    <title>PeerConnection server test page</title>
+    <link rel="stylesheet" href="css/main.css"/>
 </head>
 
 <body>
@@ -9,29 +10,39 @@
             <video id="remote-video"></video>
         </div>
     </div>
-    Server: <input type="text" id="server" value="http://localhost:8888" /><br>
-    Your name: <input type="text" id="local" value="VR"/>
-    <button id="connect" onclick="connect();">Connect</button>
-    <button disabled="true" id="disconnect" onclick="disconnect();">Disconnect</button>
-    <table>
-    <tr>
-        <td>The SDP from the native side which will be sent to setRemoteDescription<br>
-        <textarea id="offer" rows="20" cols="60"></textarea></td>
-        <td>The SDP generated for answer will be sent to the remote peer.<br>
-        <textarea id="answer" rows="20" cols="60"></textarea></td>
-    </tr>
-    <tr>
-        <td>This is ICE info for the local host, we'll need to send it to the remote end<br>
-        <textarea id="icecandidates" rows="10" cols="60"></textarea></td>
-        <td>Paste the ICE info from the remote host here and press 'process ICE candidates'<br>
-        <textarea id="othericecandidates" rows="10" cols="60"></textarea></td>
-    </tr>
-    </table>
-    <br>
-    <button onclick="document.getElementById('debug').innerHTML='';">Clear log</button>
-    <pre id="debug"></pre>
-    <br>
-    <hr>
+    <div id="process">
+        Server: <input type="text" id="server" value="http://localhost:8888" /><br>
+        Your name: <input type="text" id="local" value="VR"/>
+        <button id="connect" onclick="connect();">Connect</button>
+        <button disabled="true" id="disconnect" onclick="disconnect();">Disconnect</button>
+        <table>
+            <tr>
+                <td>The SDP from the native side which will be sent to setRemoteDescription<br>
+                <textarea id="offer" rows="20" cols="60"></textarea></td>
+                <td>The SDP generated for answer will be sent to the remote peer.<br>
+                <textarea id="answer" rows="20" cols="60"></textarea></td>
+            </tr>
+            <tr>
+                <td>This is ICE info for the local host, we'll need to send it to the remote end<br>
+                <textarea id="icecandidates" rows="10" cols="60"></textarea></td>
+                <td>Paste the ICE info from the remote host here and press 'process ICE candidates'<br>
+                <textarea id="othericecandidates" rows="10" cols="60"></textarea></td>
+            </tr>
+        </table>
+        <br>
+        <button onclick="document.getElementById('debug').innerHTML='';">Clear log</button>
+        <pre id="debug"></pre>
+        <br>
+        <hr>
+    </div>
+    <div class="graph-container" id="bitrateGraph">
+	    <div>Bitrate</div>
+        <canvas id="bitrateCanvas"></canvas>
+    </div>
+    <div class="graph-container" id="packetGraph">
+	    <div>Packets received per second</div>
+        <canvas id="packetCanvas"></canvas>
+    </div>
 </body>
 
 <script>
@@ -53,6 +64,15 @@
         'OfferToReceiveAudio': true,
         'OfferToReceiveVideo': true }};
     var remoteStream;
+
+    let bitrateGraph;
+    let bitrateSeries;
+    let headerrateSeries;
+
+    let packetGraph;
+    let packetSeries;
+
+    let lastResult;
 
     RTCPeerConnection = window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
     RTCSessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
@@ -87,6 +107,18 @@
         }
     }
 
+    function prepareStatis() {
+        bitrateSeries = new TimelineDataSeries();
+        bitrateGraph = new TimelineGraphView('bitrateGraph', 'bitrateCanvas');
+        bitrateGraph.updateEndDate();
+
+        headerrateSeries = new TimelineDataSeries();
+        headerrateSeries.setColor('green');
+
+        packetSeries = new TimelineDataSeries();
+        packetGraph = new TimelineGraphView('packetGraph', 'packetCanvas');
+        packetGraph.updateEndDate();
+    }
 
     function onRemoteStreamAdded(event) {
 
@@ -94,11 +126,8 @@
         var remoteVideoElement = document.getElementById('remote-video');
         remoteVideoElement.srcObject = event.stream;
         remoteVideoElement.play();
-        /*
-        console.log("Remote stream added:", URL.createObjectURL(event.stream));
-        var remoteVideoElement = document.getElementById('remote-video');
-        remoteVideoElement.src = URL.createObjectURL(event.stream);
-        remoteVideoElement.play();*/
+      
+        prepareStatis();
     }
 
     function sld_success_cb() {
@@ -139,7 +168,7 @@
         }
         else {
             console.log("Adding ICE candiate ", dataJson);
-            
+
             document.getElementById("othericecandidates").value = JSON.stringify(dataJson);
             var candidate = new RTCIceCandidate({sdpMLineIndex: dataJson.sdpMLineIndex, candidate: dataJson.candidate});
             pc.addIceCandidate(candidate, aic_success_cb, aic_failure_cb);
@@ -349,5 +378,58 @@
     function onRemoteSdpSucces() {
         console.log('onRemoteSdpSucces');
     }
+
+    // query getStats every second
+    window.setInterval(() => {
+        if (!pc) {
+            return;
+        }
+        console.log('window.setInterval');
+        const videoReceiver = pc.getReceivers()[1];
+        if (!videoReceiver) {
+            return;
+        }
+        videoReceiver.getStats().then(res => {
+            res.forEach(report => {
+            let bytes;
+            let headerBytes;
+            let packets;
+            if (report.type === 'inbound-rtp') {
+                if (report.isRemote) {
+                    return;
+                }
+                const now = report.timestamp;
+                bytes = report.bytesReceived;
+                headerBytes = report.headerBytesReceived;
+
+                packets = report.packetsReceived;
+                if (lastResult && lastResult.has(report.id)) {
+                    // calculate bitrate
+                    const bitrate = 8 * (bytes - lastResult.get(report.id).bytesReceived) /
+                        (now - lastResult.get(report.id).timestamp);
+                    const headerrate = 8 * (headerBytes - lastResult.get(report.id).headerBytesReceived) /
+                        (now - lastResult.get(report.id).timestamp);
+
+                    console.log('bitrate=' + bitrate);
+                    console.log('headerrate=' + headerrate);
+                    // append to chart
+                    bitrateSeries.addPoint(now, bitrate);
+                    headerrateSeries.addPoint(now, headerrate);
+                    bitrateGraph.setDataSeries([bitrateSeries, headerrateSeries]);
+                    bitrateGraph.updateEndDate();
+
+                    // calculate number of packets and append to chart
+                    packetSeries.addPoint(now, packets -
+                    lastResult.get(report.id).packetsReceived);
+                    packetGraph.setDataSeries([packetSeries]);
+                    packetGraph.updateEndDate();
+                }
+            }
+            });
+            lastResult = res;
+        });
+    }, 1000);
 </script>
+<script src="js/third_party/graph.js"></script>
+<script src="js/lib/ga.js"></script>
 </html>
