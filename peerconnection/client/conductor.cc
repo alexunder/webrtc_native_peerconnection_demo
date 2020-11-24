@@ -16,7 +16,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
-
+#include <iostream>
 
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
@@ -27,6 +27,8 @@
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/audio_options.h"
 #include "api/create_peerconnection_factory.h"
+#include "api/peer_connection_proxy.h"
+#include "api/rtp_parameters.h"
 #include "api/rtp_sender_interface.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
@@ -435,6 +437,13 @@ void Conductor::ConnectToPeer(int peer_id) {
   }
 }
 
+webrtc::PeerConnection * Conductor::GetInternalPeerConnection() {
+  auto* pci =
+      static_cast<webrtc::PeerConnectionProxyWithInternal<webrtc::PeerConnectionInterface>*>(
+          peer_connection_.get());
+  return static_cast<webrtc::PeerConnection*>(pci->internal());
+}
+
 void Conductor::AddTracks() {
   if (!peer_connection_->GetSenders().empty()) {
     return;  // Already added tracks.
@@ -487,6 +496,45 @@ void Conductor::AddTracks() {
           RTC_LOG(LS_ERROR) << "OpenVideoCaptureDevice failed";
       }
   }
+
+  //Debug codec setting
+  //## Filter out the codecs
+  auto videoCodecs =  peer_connection_factory_
+        ->GetRtpSenderCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
+        .codecs;
+  std::cout << "The original codecs:" << std::endl;
+  for (webrtc::RtpCodecCapability codec : videoCodecs) {
+    std::cout << "Codec:" << codec.name << std::endl;
+  }
+
+  auto it = std::remove_if(videoCodecs.begin(), videoCodecs.end(),
+                           [] (const webrtc::RtpCodecCapability& codec) {
+                             return !(codec.name == cricket::kH264CodecName);
+                           });
+
+  videoCodecs.erase(it, videoCodecs.end());
+  videoCodecs.erase(videoCodecs.begin(), videoCodecs.end() - 1);
+
+  std::cout << "After removal codecs:" << std::endl;
+  for (webrtc::RtpCodecCapability codec : videoCodecs) {
+    std::cout << "Codec:" << codec.name << std::endl;
+    std::cout << "Parameters:" << std::endl;
+
+    typedef std::map<std::string, std::string> Parameters_Map;
+    for( Parameters_Map::const_iterator it = codec.parameters.begin(); it != codec.parameters.end(); ++it ) {
+      std::cout << it->first << ":" << it->second << std::endl;
+    }
+  }
+
+  auto transceivers = GetInternalPeerConnection()->GetTransceiversInternal();
+  for (auto& transceiver : transceivers) {
+    std::cout << "transceiver type:" << transceiver->media_type() << std::endl;
+    if (transceiver->media_type() == cricket::MEDIA_TYPE_VIDEO) {
+        std::cout << "Got sender trasceiver." << std::endl;
+        auto result = transceiver->SetCodecPreferences(videoCodecs);
+    }
+  }
+
   main_wnd_->SwitchToStreamingUI();
 }
 

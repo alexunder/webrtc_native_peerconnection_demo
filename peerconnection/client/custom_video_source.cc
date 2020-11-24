@@ -12,8 +12,8 @@ CustomVideoSource::CustomVideoSource()
       rtc::ThreadManager::Instance()->SetCurrentThread(this);
     }
 
-    int width = 800;
-    int height = 600;
+    int width  = 1920;
+    int height = 2160;
     mpSquareGenerator = webrtc::test::CreateSquareFrameGenerator(width, height,
             webrtc::test::FrameGeneratorInterface::OutputType::kI420,
              absl::optional<int>(300));

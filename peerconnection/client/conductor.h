@@ -19,6 +19,7 @@
 
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
+#include "pc/peer_connection.h"
 #include "main_wnd.h"
 #include "peer_connection_client.h"
 
@@ -54,6 +55,8 @@ class Conductor : public webrtc::PeerConnectionObserver,
   bool setCustomMode(bool mode) {
     mIsCustomMode = mode;
   }
+
+  webrtc::PeerConnection * GetInternalPeerConnection();
 
  protected:
   ~Conductor();
