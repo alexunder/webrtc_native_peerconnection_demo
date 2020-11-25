@@ -1,6 +1,6 @@
-# Introduction  webrtc_native_peerconnection_demo
+# Introduction to webrtc_native_peerconnection_demo
 
-This code repository was written by me to do some experiments with WebRTC. It is known that the WebRTC project is extremely hard to integrate with other projects. I have spent weeks extracting the peer connection source from the WebRTC source tree. In order to integrate our own QT project, I also wrote a client version based on QT.
+This code repository was written by me to do some experiments with WebRTC. It is known that the WebRTC project is extremely hard to integrate with other projects. I have spent weeks extracting the peer connection source code from the WebRTC source code tree. In order to integrate our own QT project, I also wrote a client version based on QT.
 
 # How to build (Linux only, Ubuntu 18.04 is prefered)
 
